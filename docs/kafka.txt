@@ -72,3 +72,76 @@ commit log，kafka可以服务于一个外部的commit log用于分布式系统�
 
 
 
+Manual Partition Assignment
+在上一个示例中，我们订阅感兴趣的topic，让kafka动态分配一个公平共享的分区用于这些topic，基于组内的活动消费者。有时需要细粒度地控制指定的分区来分配。
+如果进程正在维护和分区有关的某种本地状态（像本地磁盘上的key-value存储），它应该仅仅从它在磁盘上维护的分区里获得记录。
+如果进程本身是高可用的，失败时将被重启（或许使用一个集群管理框架像YARN、Mesos等）。这种情况不需要kafka来检测失败和重分配分区，因为消费进程将在其它机器上重启。
+为了使用这种模式，可以调用assign(Collection)方法并指定一个完整的分区列表，你想从它们消费。
+     String topic = "foo";
+     TopicPartition partition0 = new TopicPartition(topic, 0);
+     TopicPartition partition1 = new TopicPartition(topic, 1);
+     consumer.assign(Arrays.asList(partition0, partition1));
+一旦分配好，你可以在一个循环里调用poll方法，就可以像前面那样消费记录。消费者指定的组仍然用于提交偏移量，但是现在分区集合将只有在对assign方法的再次调用时才会改变。手动分区分配不使用组协调，因此消费者失败将不导致分区分配冲平衡。每个消费者具有独立的行为，即使它与另一个消费者共享一个组ID。为了避免偏移量提交冲突，你应该通常确保对于每一个消费者实例，组ID是唯一的。
+注意，不能够把手动分区分配（使用assign方法）和动态分区分配（使用subscribe方法）混合在一起。
+Storing Offsets Outside Kafka
+消费者应用不需要使用kafka内建的偏移量存储，它可以存储偏移量到自己选择的存储中。主要使用场景是允许应用以原子的方式把偏移量和消费结果存储到同一个系统。这并不总是可行，但是当它可行时，它将使消费完全地原子的，给出"确切一次"语义比使用kafka的偏移量提交功能默认获得的"至少一次"的语义要强。
+如果消费结果正被存储在一个关系数据库，把偏移量也存储到数据库，能够允许消费结果和偏移量在一个事务里提交。要么消费成功同时更新偏移量或者消费失败不更新偏移量。
+如果消费结果正被存储到一个本地存储，也可以把偏移量存到那里。例如通过订阅一个特殊的分区能够创建一个搜索索引，偏移量和索引数据可以存储在一起。如果这是以原子方式完成的，通常这是可能的使它成为这种情况即使崩溃发生造成未同步的数据丢失，无论留下什么东西，相应的偏移量也会存储。。。
+每个记录都有它自己的偏移量，因此要管理你自己的偏移量仅仅需要做下面这些。
+配置enable.auto.commit=false，使用随ConsumerRecord提供的偏移量来存储你的位置，在重新启动时使用seek(TopicPartition, long)方法来重新存储消费者的位置。
+这种用法类型最简单，当分区分配是手动完成时。如果分区分配是自动完成的，需要特别关注处理分区分配发送改变的情形。可以通过提供一个ConsumerRebalanceListener实例在对subscribe(Collection, ConsumerRebalanceListener)和subscribe(Pattern, ConsumerRebalanceListener)调用时。例如，当分区从一个消费者被带走时，消费者将希望为这些分区提交它的偏移量，通过实现ConsumerRebalanceListener.onPartitionsRevoked(Collection)来做到。当分区被分配给一个消费者时，消费者将希望为这些新分区查询偏移量，正确地初始化消费者到那个位置，通过实现ConsumerRebalanceListener.onPartitionsAssigned(Collection)来做到。
+ConsumerRebalanceListener的另一个普通使用是来刷新应用程序为分区维护的任何缓存，移动到其它地方。
+Controlling The Consumer's Position
+大多使用情况是，消费者简单地消费记录从开头到结束，周期性地提交它的位置（要么自动，要么手动）。kafka允许消费者手动控制它的位置，在一个分区里面随意地向前或向后移动。这意味着一个消费者能够重消费旧的记录，或跳至最新的记录，没有实际消费中间的记录。
+有几种情况手动控制消费者的位置非常有用。一种是用于时间敏感的记录处理，对于一个落后太远的消费者，不尝试去追上处理所有的记录，而是跳到最近的记录，它将是有意义的。
+另一个用例是一个系统维护了本地状态。这种情况消费者希望在启动时把它的位置初始化为本地存储里面包含的内容。同样地如果本地状态被破坏，状态可能在一个新的机器上被重建，通过重消费所有的数据和重创建状态（假设kafka保留足够的历史）。
+kafka允许使用seek(TopicPartition, long)方法指定位置来指定新的位置。特别的方法seekToBeginning(Collection)和seekToEnd(Collection)定位到服务器维护的最早和最近的偏移量也是可用的。
+Consumption Flow Control
+如果一个消费者被分配多个分区来从它们取数据，将尝试同时从它们消费数据，实际上这些分区具有相同的优先权。有时消费者希望首先关注某些分区并全速获取数据，当这些分区没有数据或有很少数据可消费时，才开始从其它分区获取数据。
+一种使用场景是流处理，处理器从两个topic取数据并在这两个流上执行连接操作。当一个topic长时间地落后于另一个，处理器希望暂停从靠前的那个topic取数据，为了使落后的topic能够赶上。另一个例子是基于消费者启动的引导，在有许多历史数据需要追赶，应用通常希望获取某些topic的最新数据，在考虑获取其它topic之前。
+kafka支持动态控制消费流程，通过使用pause(Collection)和resume(Collection)在指定的分区上暂停消费和在指定的已暂停分区上恢复消费，在将来的poll(long)调用中。
+Multi-threaded Processing
+kafka消费者不是线程安全的。所有的网络IO都在应用程序所在的线程里执行调用。用户有责任确保多线程访问被合适的同步。非同步的访问将导致ConcurrentModificationException。
+对于这个规则唯一的例外是wakeup()，可以安全地从一个外部线程里使用来中断一个活动的操作。此时，一个WakeupException将从阻塞在这个操作上的线程里被抛出。这可以用于从另一个线程关闭消费者。下面代码片段给出典型的模式。
+ public class KafkaConsumerRunner implements Runnable {
+     private final AtomicBoolean closed = new AtomicBoolean(false);
+     private final KafkaConsumer consumer;
+
+     public void run() {
+         try {
+             consumer.subscribe(Arrays.asList("topic"));
+             while (!closed.get()) {
+                 ConsumerRecords records = consumer.poll(10000);
+                 // Handle new records
+             }
+         } catch (WakeupException e) {
+             // Ignore exception if closing
+             if (!closed.get()) throw e;
+         } finally {
+             consumer.close();
+         }
+     }
+
+     // Shutdown hook which can be called from a separate thread
+     public void shutdown() {
+         closed.set(true);
+         consumer.wakeup();
+     }
+ }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
