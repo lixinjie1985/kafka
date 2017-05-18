@@ -1,0 +1,174 @@
+Class KafkaConsumer<K,V>
+客户端从kafka集群消费记录。客户端透明地处理kafka代理的失败，透明地处理它取数据的topic分区在集群内的迁移，客户端也和代理交互来允许消费者组负载均衡地消费通过使用消费者组。
+Offsets and Consumer Position
+kafka为一个分区里的每个记录维护一个数字偏移量，这个偏移量在那个分区里充当一个记录的唯一标识符，也表示在那个分区里消费者的位置。例如一个消费者的位置是5的话，表明它已经消费了偏移量0到4的记录，下一个即将接收偏移量是5的记录。实际上位置的两个概念与消费者的用户有关。
+消费者的位置给出了下一个将公布的记录的偏移量。它可能比消费者在这个分区里看到的最高偏移量要大。它会自动地前进当每次消费者通过调用poll(long)方法来接收消息时。
+提交位置是已经被安全存储的最后一个偏移量。处理失败和重新开始后，它就是消费者恢复到的偏移量。消费者能够要么周期性地自动提交偏移量，或者选择手动地控制这个提交位置，通过调用任意一个提交API（commitSync和commitAsync）。这个差别给出了消费者的控制权当一个记录被认为已消费时。
+Consumer Groups and Topic Subscriptions
+kafka使用消费者组的概念允许一池进程来分割消费和处理记录的工作。这些进程可以运行在同一个机器上或分布于许多不同机器上来为处理提供扩展能力和容错性。共享同一个组ID的所有消费者实例都是这个消费者组的一部分。
+组内的每个消费者能够动态地设置它想订阅的topic列表通过任意一个subscribe API。在每个消费者组里面，kafka将分发已订阅topic里的每条消息给组内的一个消费者实例。这通过在组内所有成员间平分所有分区来实现，以至于每个分区分配给组内的一个确定的消费者实例。如果一个topic有四个分区，一个消费者组有两个消费者实例，每个消费者实例将从两个分区消费。
+一个消费者组内的成员关系是动态维护的，如果一个消费者实例失败，分配给它的分区将重新分配给组内的其它消费者实例。相似的，如果一个新的消费者实例加入到组里，分区将从现有的消费者实例上移动到这个新的消费者实例上。这被称为重平衡组。组的重平衡也用于当新的分区被加入到已订阅topic或当一个新的topic且匹配一个已订阅正则表达式被创建。组将自动地检测新分区通过周期性的元数据刷新，并把这些新分区分配给组内成员。
+从概念上讲你可以认为一个消费者组作为一个单个的逻辑订阅者恰巧由多个消费者实例组成。作为一个多订阅者系统，kafka天然支持任意数量的消费者组用于一个给定的topic且没有重复数据（额外的消费者实例实际上十分便宜）。
+这是一个轻微的设计功能泛化，在消息系统中很平常。为了使语义与传统消息系统中的队列相似，所有的进程将是单个消费者组的一部分，因此记录分发在这个组上将被平衡。与传统消息系统不同的是可以有多个这样的组。为了使语义与传统消息系统中的发布订阅相似，每个进程将有它自己的消费者组，每个进程将订阅发布到topic上的所有记录。在传统消息系统里，队列式的是互斥消费，发布订阅式的是共享消费。在kafka里，组内是互斥消费，组间是共享消费。
+除此之外，当自动发生组重分配时，消费者可以通过ConsumerRebalanceListener得到通知，允许它们完成必要的应用级别的逻辑，像状态清除，手动提交偏移量。可以为消费者手动分配指定分区使用assign(Collection)方法，这种情况下，动态分区分配和消费者组协调将被禁用。
+Detecting Consumer Failures
+在订阅了若干topic后，当在消费者上调用poll(long)时该消费者将自动加入到组，poll API被设计用来确保消费者存活，只要你继续调用poll，这个消费者将停留在组内，继续从分配给它的分区接收消息。在底下，消费者周期性地发送心跳给服务器，如果消费者崩溃或持续一段session.timeout.ms指定的时间不能发送心跳，消费者将被认为死亡，它的分区将会被重分配。
+消费者也有可能遇到一个活锁的情况，在它持续发送心跳的地方，但是没有取得任何进展。为了阻止消费者在这种情况下不确定地抓住它的分区，我们提供了一个存活检测机制使用max.poll.interval.ms设置。如果你没有至少以配置的最大间隔频率调用poll，客户端将主动地离开组，以至于另外的消费者可以接管它的分区。当这种情况发生时，你可能会看到一个偏移量提交失败（从commitSync()方法里抛出的CommitFailedException异常）。这是一个安全机制来保证只有组内活的成员能够提交偏移量。因此为了留在组内，你必须持续地调用poll。
+消费者提供两个配置来控制poll循环的行为，max.poll.interval.ms，通过增加poll之间的间隔，能够给消费者更多的时间来处理一批从poll(long)方法返回的记录。不好之处是延迟了一个组的重平衡，因为消费者只有在对poll调用的内部才能加入重平衡。可以用这个配置来限制重平衡完成的时间，但是你的风险进展缓慢，如果消费者实际不能足够经常地调用poll。
+max.poll.records，使用这个设置来限制对poll的单次调用返回的总的记录数。这使得更容预测在每个poll间隔内必须处理的最大记录数。通过调整这个值，你能够减小poll间隔，将减小组重平衡的冲击或影响。
+对于消息处理时间非常不同难以预料时，这两种选项或许都难以满足。建议的方式是把消息处理放到另一个线程去，这允许消费者连续调用poll方法当消息处理仍在进行时。必须要小心的是确保提交的偏移量不要跑到实际位置的前面。典型地，你必须禁用自动提交，手动地提交已经被线程处理完的记录的偏移量（基于你需要的分发语义）。注意，你将需要pause（暂停）分区，以至于没有新的纪录从poll接收，直到线程处理完之前返回的记录。
+Usage Examples
+Automatic Offset Committing
+	Properties props = new Properties();
+     props.put("bootstrap.servers", "localhost:9092");
+     props.put("group.id", "test");
+     props.put("enable.auto.commit", "true");
+     props.put("auto.commit.interval.ms", "1000");
+     props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+     props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+     KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props);
+     consumer.subscribe(Arrays.asList("foo", "bar"));
+     while (true) {
+         ConsumerRecords<String, String> records = consumer.poll(100);
+         for (ConsumerRecord<String, String> record : records)
+             System.out.printf("offset = %d, key = %s, value = %s%n", record.offset(), record.key(), record.value());
+     }
+使用bootstrap.servers指定一到多个broker列表，它仅仅用于发现集群中剩余其它的broker，不需要把集群中所有的服务器都列出来（有时你需要指定多个，当客户端正在连接的那个服务器宕机时）。
+设置enable.auto.commit意味着偏移量以一个可控的频率自动提交，这个频率由auto.commit.interval.ms来配置。
+Manual Offset Control
+除了依赖消费者周期性地提交已消费的偏移量之外，用户也能够控制当记录被认为已经消费因此提交它们的偏移量。当消息的消费与某些处理逻辑耦合时非常有用，因此一个消息不应该被认为已经消费直到它被处理完。
+     Properties props = new Properties();
+     props.put("bootstrap.servers", "localhost:9092");
+     props.put("group.id", "test");
+     props.put("enable.auto.commit", "false");
+     props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+     props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+     KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props);
+     consumer.subscribe(Arrays.asList("foo", "bar"));
+     final int minBatchSize = 200;
+     List<ConsumerRecord<String, String>> buffer = new ArrayList<>();
+     while (true) {
+         ConsumerRecords<String, String> records = consumer.poll(100);
+         for (ConsumerRecord<String, String> record : records) {
+             buffer.add(record);
+         }
+         if (buffer.size() >= minBatchSize) {
+             insertIntoDb(buffer);
+             consumer.commitSync();
+             buffer.clear();
+         }
+     }
+这个示例中，我们累积一定的记录数，然后把它们插入数据库，成功之后手动提交偏移量。这给了我们精确地控制当一个记录被认为已经消费时。这也增加了反面的可能性，就是记录入库之后和偏移量提交前这段时间内可能失败（虽然时间很短，只有几毫秒，也是有可能的）。这种情况接管消费的新的进程将从最后一个提交的偏移量进行消费，将重复插入最后一批数据。以这种方式使用kafka提供了通常被叫做"至少一次"的分发保证。每个记录至少可能被分发一次，在失败情况下可能会重复分发。
+注意，使用自动偏移量提交也能够给你"至少一次"的分发。但是有个要求是你必须消费完每次调用poll(long)返回的所有数据，然后才能够进行后续的poll(long)调用。或者在关闭消费者前必须消费完所有的数据。如果以上两者之一出现了失败，有可能已提交的偏移量跑到消费位置的前面，这将导致丢失记录。因为在自动提交偏移量时，只要记录被成功获取到，就可以周期性地自动提交偏移量了，不管你是否已经消费了记录。使用手动偏移量控制的好处是你拥有直接的控制权当一个记录被认为已经消费时。
+上面的示例使用commitSync()来标记所有接收到的记录当提交时。有时你希望对记录有更加细粒度的控制通过显示指定一个偏移量。下面的示例在处理完每个分区中的记录时提交该分区的偏移量。
+     try {
+         while(running) {
+             ConsumerRecords<String, String> records = consumer.poll(Long.MAX_VALUE);
+             for (TopicPartition partition : records.partitions()) {
+                 List<ConsumerRecord<String, String>> partitionRecords = records.records(partition);
+                 for (ConsumerRecord<String, String> record : partitionRecords) {
+                     System.out.println(record.offset() + ": " + record.value());
+                 }
+                 long lastOffset = partitionRecords.get(partitionRecords.size() - 1).offset();
+                 consumer.commitSync(Collections.singletonMap(partition, new OffsetAndMetadata(lastOffset + 1)));
+             }
+         }
+     } finally {
+       consumer.close();
+     }
+注意，提交的偏移量应该总是你的应用将要读取的下一个消息的偏移量，因此我们调用commitSync(offsets)时应该在最后一个处理过的消息的偏移量上加上1。
+Manual Partition Assignment
+在上一个示例中，我们订阅感兴趣的topic，让kafka动态分配一个公平共享的分区用于这些topic，基于组内的活动消费者。有时需要细粒度地控制指定的分区来分配。
+如果进程正在维护和分区有关的某种本地状态（像本地磁盘上的key-value存储），它应该仅仅从它在磁盘上维护的分区里获得记录。
+如果进程本身是高可用的，失败时将被重启（或许使用一个集群管理框架像YARN、Mesos等）。这种情况不需要kafka来检测失败和重分配分区，因为消费进程将在其它机器上重启。
+为了使用这种模式，可以调用assign(Collection)方法并指定一个完整的分区列表，你想从它们消费。
+     String topic = "foo";
+     TopicPartition partition0 = new TopicPartition(topic, 0);
+     TopicPartition partition1 = new TopicPartition(topic, 1);
+     consumer.assign(Arrays.asList(partition0, partition1));
+一旦分配好，你可以在一个循环里调用poll方法，就可以像前面那样消费记录。消费者指定的组仍然用于提交偏移量，但是现在分区集合将只有在对assign方法的再次调用时才会改变。手动分区分配不使用组协调，因此消费者失败将不导致分区分配冲平衡。每个消费者具有独立的行为，即使它与另一个消费者共享一个组ID。为了避免偏移量提交冲突，你应该通常确保对于每一个消费者实例，组ID是唯一的。
+注意，不能够把手动分区分配（使用assign方法）和动态分区分配（使用subscribe方法）混合在一起。
+Storing Offsets Outside Kafka
+消费者应用不需要使用kafka内建的偏移量存储，它可以存储偏移量到自己选择的存储中。主要使用场景是允许应用以原子的方式把偏移量和消费结果存储到同一个系统。这并不总是可行，但是当它可行时，它将使消费完全地原子的，给出"确切一次"语义比使用kafka的偏移量提交功能默认获得的"至少一次"的语义要强。
+如果消费结果正被存储在一个关系数据库，把偏移量也存储到数据库，能够允许消费结果和偏移量在一个事务里提交。要么消费成功同时更新偏移量或者消费失败不更新偏移量。
+如果消费结果正被存储到一个本地存储，也可以把偏移量存到那里。例如通过订阅一个特殊的分区能够创建一个搜索索引，偏移量和索引数据可以存储在一起。如果这是以原子方式完成的，通常这是可能的使它成为这种情况即使崩溃发生造成未同步的数据丢失，无论留下什么东西，相应的偏移量也会存储。。。
+每个记录都有它自己的偏移量，因此要管理你自己的偏移量仅仅需要做下面这些。
+配置enable.auto.commit=false，使用随ConsumerRecord提供的偏移量来存储你的位置，在重新启动时使用seek(TopicPartition, long)方法来重新存储消费者的位置。
+这种用法类型最简单，当分区分配是手动完成时。如果分区分配是自动完成的，需要特别关注处理分区分配发送改变的情形。可以通过提供一个ConsumerRebalanceListener实例在对subscribe(Collection, ConsumerRebalanceListener)和subscribe(Pattern, ConsumerRebalanceListener)调用时。例如，当分区从一个消费者被带走时，消费者将希望为这些分区提交它的偏移量，通过实现ConsumerRebalanceListener.onPartitionsRevoked(Collection)来做到。当分区被分配给一个消费者时，消费者将希望为这些新分区查询偏移量，正确地初始化消费者到那个位置，通过实现ConsumerRebalanceListener.onPartitionsAssigned(Collection)来做到。
+ConsumerRebalanceListener的另一个普通使用是来刷新应用程序为分区维护的任何缓存，移动到其它地方。
+Controlling The Consumer's Position
+大多使用情况是，消费者简单地消费记录从开头到结束，周期性地提交它的位置（要么自动，要么手动）。kafka允许消费者手动控制它的位置，在一个分区里面随意地向前或向后移动。这意味着一个消费者能够重消费旧的记录，或跳至最新的记录，没有实际消费中间的记录。
+有几种情况手动控制消费者的位置非常有用。一种是用于时间敏感的记录处理，对于一个落后太远的消费者，不尝试去追上处理所有的记录，而是跳到最近的记录，它将是有意义的。
+另一个用例是一个系统维护了本地状态。这种情况消费者希望在启动时把它的位置初始化为本地存储里面包含的内容。同样地如果本地状态被破坏，状态可能在一个新的机器上被重建，通过重消费所有的数据和重创建状态（假设kafka保留足够的历史）。
+kafka允许使用seek(TopicPartition, long)方法指定位置来指定新的位置。特别的方法seekToBeginning(Collection)和seekToEnd(Collection)定位到服务器维护的最早和最近的偏移量也是可用的。
+Consumption Flow Control
+如果一个消费者被分配多个分区来从它们取数据，将尝试同时从它们消费数据，实际上这些分区具有相同的优先权。有时消费者希望首先关注某些分区并全速获取数据，当这些分区没有数据或有很少数据可消费时，才开始从其它分区获取数据。
+一种使用场景是流处理，处理器从两个topic取数据并在这两个流上执行连接操作。当一个topic长时间地落后于另一个，处理器希望暂停从靠前的那个topic取数据，为了使落后的topic能够赶上。另一个例子是基于消费者启动的引导，在有许多历史数据需要追赶，应用通常希望获取某些topic的最新数据，在考虑获取其它topic之前。
+kafka支持动态控制消费流程，通过使用pause(Collection)和resume(Collection)在指定的分区上暂停消费和在指定的已暂停分区上恢复消费，在将来的poll(long)调用中。
+Multi-threaded Processing
+kafka消费者不是线程安全的。所有的网络IO都在应用程序所在的线程里执行调用。用户有责任确保多线程访问被合适的同步。非同步的访问将导致ConcurrentModificationException。
+对于这个规则唯一的例外是wakeup()，可以安全地从一个外部线程里使用来中断一个活动的操作。此时，一个WakeupException将从阻塞在这个操作上的线程里被抛出。这可以用于从另一个线程关闭消费者。下面代码片段给出典型的模式。
+ public class KafkaConsumerRunner implements Runnable {
+     private final AtomicBoolean closed = new AtomicBoolean(false);
+     private final KafkaConsumer consumer;
+
+     public void run() {
+         try {
+             consumer.subscribe(Arrays.asList("topic"));
+             while (!closed.get()) {
+                 ConsumerRecords records = consumer.poll(10000);
+                 // Handle new records
+             }
+         } catch (WakeupException e) {
+             // Ignore exception if closing
+             if (!closed.get()) throw e;
+         } finally {
+             consumer.close();
+         }
+     }
+
+     // Shutdown hook which can be called from a separate thread
+     public void shutdown() {
+         closed.set(true);
+         consumer.wakeup();
+     }
+ }
+在另外一个线程里，消费者可以通过设置标志被关闭和唤醒。
+     closed.set(true);
+     consumer.wakeup();
+注意，虽然可以使用线程的中断而不是wakeup()方法来中断一个阻塞的操作（这是线程抛出一个InterruptException），我们不鼓励这样的用法，因为可能导致将被中断消费者的一个干净的关闭。线程中断主要用于支持那些不能使用wakeup()方法的情况，例如kafka客户端不知道管理消费者线程的代码。
+我们故意避免实现一个特殊的线程模型用于处理，这使得实现记录的多线程处理有更多的选择。
+1. One Consumer Per Thread
+一个简单的选项就是给每个线程它自己的消费者实例，这是这种方式的有点和缺点。
+优点，实现最简单，通常是最快的因为线程间不需要协作，它是每个分区的按顺序消费很容易实现（因为每个线程处理消息的顺序就是接收它们的顺序）。
+缺点，越多的消费者意味着越多的到集群的TCP连接（每个消费者一个线程），一般来说kafka处理连接非常高效，所以通常来说是一个很小的开销。多消费者意味着更多的请求被发送到服务器，轻微的减少了数据的批处理，可能导致丢掉一些IO吞吐量。所有参与处理的线程数目将受到所有分区数目的限制。
+2. Decouple Consumption and Processing
+另一个可选的方法是用一到多个消费者线程来获取所有的数据，把这些ConsumerRecords实例放到一个阻塞队列里，然后用一个处理器线程池来从队列里面消费，实际完成对记录的处理。这个方法同样地也有优点和缺点。 
+优点，这种方法允许独立地扩展消费者的数目和处理器的数目。可能使用一个消费者来满足很多的处理器线程，避免任何来自于分区的限制。
+缺点，在所有处理者中保证顺序，要求特别的小心，因为线程之间是独立执行的，较早的数据可能会在较晚的数据后面被处理，取决于线程幸运的执行时间，对于处理没有顺序要求的，这当然不是问题了。手动提交位置变得比较困难，它要求所有的线程协作来确保那个分区的处理已经完成。
+关于这种方式，有许多可能的变体，例如每个处理器线程可以有自己的队列，消费者线程使用TopicPartition将数据哈希到这些队列，确保顺序消费和简化提交。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
