@@ -1,3 +1,5 @@
+http://kafka.apache.org/0102/javadoc/index.html
+
 Class KafkaConsumer<K,V>
 客户端从kafka集群消费记录。客户端透明地处理kafka代理的失败，透明地处理它取数据的topic分区在集群内的迁移，客户端也和代理交互来允许消费者组负载均衡地消费通过使用消费者组。
 Offsets and Consumer Position

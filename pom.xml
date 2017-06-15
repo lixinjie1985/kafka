@@ -21,5 +21,59 @@
       <version>3.8.1</version>
       <scope>test</scope>
     </dependency>
+    
+    <dependency>
+      <groupId>org.apache.kafka</groupId>
+      <artifactId>kafka-examples</artifactId>
+      <version>0.10.2.1</version>
+    </dependency>
+    
+    <dependency>
+      <groupId>org.apache.kafka</groupId>
+      <artifactId>kafka-clients</artifactId>
+      <version>0.10.2.1</version>
+    </dependency>
+    
+    <dependency>
+      <groupId>org.apache.kafka</groupId>
+      <artifactId>kafka-streams</artifactId>
+      <version>0.10.2.1</version>
+    </dependency>
+    
+    <dependency>
+      <groupId>org.apache.kafka</groupId>
+      <artifactId>kafka-streams-examples</artifactId>
+      <version>0.10.2.1</version>
+    </dependency>
+    
+    <dependency>
+      <groupId>org.apache.kafka</groupId>
+      <artifactId>kafka-tools</artifactId>
+      <version>0.10.2.1</version>
+    </dependency>
+    
+    <dependency>
+      <groupId>org.apache.kafka</groupId>
+      <artifactId>kafka_2.10</artifactId>
+      <version>0.10.2.1</version>
+    </dependency>
+    
+    <dependency>
+      <groupId>org.apache.kafka</groupId>
+      <artifactId>kafka_2.11</artifactId>
+      <version>0.10.2.1</version>
+    </dependency>
+    
+    <dependency>
+      <groupId>org.apache.kafka</groupId>
+      <artifactId>kafka_2.12</artifactId>
+      <version>0.10.2.1</version>
+    </dependency>
+    
+    <dependency>
+      <groupId>org.apache.kafka</groupId>
+      <artifactId>kafka-log4j-appender</artifactId>
+      <version>0.10.2.1</version>
+    </dependency>
   </dependencies>
 </project>
