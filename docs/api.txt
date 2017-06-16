@@ -1,6 +1,69 @@
 http://kafka.apache.org/0102/javadoc/index.html
 
-Class KafkaConsumer<K,V>
+package org.apache.kafka.common
+ClusterResourceListener接口，集群监听器，当集群发送改变时会得到通知
+Cluster类，集群，是kafka集群中所有节点，所有topic，所有分区的一个子集表示。根据topic找到它所有可用的分区，获取集群中内部的topic，根据一个topic的一个分区找到该分区中的leader节点，根据节点ID找到一个节点，获得集群中的所有节点，根据分区ID找到分区信息，根据一个topic获取它的分区个数，根据节点ID找到所有leader节点是该节点的分区，根据topic获取它的所有分区，获取集群中的所有topic
+Node类，表示kafka的一个节点，包括主机名，端口号，节点ID，机架
+PartitionInfo类，表示一个分区，包括该分区中的所有节点，该分区中的leader节点，当前leader节点失败后可能成为新的leader节点的那些节点，该分区的ID，该分区所关联的topic
+TopicPartition类，表示一个topic和分区的映射，包括一个topic名称和一个分区ID
+
+package org.apache.kafka.common.serialization
+Serializer<T>序列化接口
+Deserializer<T>反序列化接口
+Serde<T>接口，包装序列化和反序列化接口
+
+package org.apache.kafka.clients.producer
+Callback接口，一个回调接口，当请求完成时被执行，成功时获得结果，失败时或的异常
+Partitioner接口，分割器接口，根据key、value计算出该记录在集群中对应的分区ID
+Producer<K,V>接口，生产者接口，
+ProducerInterceptor<K,V>接口，一个插件接口，可以拦截和修改记录在它们被发送到kafka集群前。包含两个方法，一是onSend方法，在key和value被序列化之前，分区被分配之前调用。一是onAcknowledgement方法，当记录被发送到服务器且得到确认时调用，或者发送记录失败时调用，成功时得到结果，失败时得到异常
+ProducerRecord<K,V>类，表示一个要发送到kafka的记录，包括topic，分区ID，时间戳，key，value。其中只有topic和value是必须的，其它的都可以不指定。当指定分区ID后，可以把一系列相关记录按顺序发送到同一个分区，为按顺序消费记录做好准备。当指定了key时，则用key的哈希值来选择分区。既没有指定分区ID，也没有指定key，则以轮询的方式选择分区
+RecordMetadata类，服务器端已经确认过的记录元数据，包括记录发送到的分区，在分区中的偏移量，序列化后的key的大小，序列化后的value的大小，所属topic，时间戳
+class KafkaProducer<K,V>
+包括flush()方法，立即把缓冲区中的记录发送到服务器，并且阻塞等待直到完成，根据topic获取所有分区，异步发送一个记录，返回一个Future用于获取异步结果，带回调的异步发送一个记录，当发送被确认时调用回调接口
+kafka客户端，用来发布记录到kafka集群。生产者是线程安全的，在多个线程共享单个生产者实例一般要比使用多个实例快。下面是一个简单的示例
+ Properties props = new Properties();
+ props.put("bootstrap.servers", "localhost:9092");
+ props.put("acks", "all");
+ props.put("retries", 0);
+ props.put("batch.size", 16384);
+ props.put("linger.ms", 1);
+ props.put("buffer.memory", 33554432);
+ props.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+ props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+
+ Producer<String, String> producer = new KafkaProducer<>(props);
+ for(int i = 0; i < 100; i++)
+     producer.send(new ProducerRecord<String, String>("my-topic", Integer.toString(i), Integer.toString(i)));
+
+ producer.close();
+生产者由一池缓存空间组成，里面存储了还没有发送到服务器的记录，和一个后台IO线程负责把这些记录封装进请求并把它们传输到集群。如果没有成功关闭生产者的话会导致这些资源泄露。
+
+send()方法是异步的。当调用它的时候把记录加到一个即将发送记录缓存里，并立即返回。这允许生产者把单个的记录放到一起进行批处理来提高效率。
+
+acks配置控制着标准，在这个标准下请求被认为已完成。当我们指定all配置时，将导致阻塞直到记录完全提交，这是最慢的但也是最持久化的配置
+
+如果请求失败，生产者可以自动重试，即使我们把重试次数retries设置为0，它不会起作用。启用重试的同时也打开了消息重复投递的可能性
+
+生产者为每个分区都维护未发送记录的缓冲区。这些缓冲区的大小通过batch.size参数配置，把它调大将导致更多的批处理，但是要求更多的内存
+
+默认一个缓冲区会立即被发送，即使它里面还有额外的未使用的空间。如果想减少请求集群的次数，可以设置linger.ms（徘徊时间）参数为某个大于0的数，这将指示生产者在发送一个请求之前等待上述指定的毫秒数希望有更多的记录到来来填满同一个批处理。这与TCP中的一个算法相似。例如在上面的示例中，可能所有100个记录在一次请求中发送完，因为我们设置了徘徊时间是1毫秒。
+然而这个设置将增加1毫秒的请求发送延迟来等待更多的记录到来，如果缓冲区还没有被填满的话。注意，在时间上紧挨着的或一起到来的记录将一般放到一个批处理里面，即使把徘徊时间设置为0，因此在非常重的负载情况下，批处理将发生而不管徘徊时间的配置是0。然而把它设置为某个大于0的数将导致更少、更有效的请求，当负载不是最大且可以容忍一小点延迟时。
+buffer.memory参数控制着生产者可用的总内存数量来用作缓冲区。如果记录发送的速度快于它们被传输到服务器的速度，此时缓冲区空间将被用完。当缓冲区空间用完后，后续额外的发送调用将被阻塞，被阻塞的时间长度阈值可以使用max.block.ms来设置，超过这个时间后将超时，并抛出TimeoutException异常
+key.serializer和value.serializer来指定序列化器把对象转换为字节数组
+
+package org.apache.kafka.clients.consumer
+Consumer<K,V>接口，消费者接口
+ConsumerInterceptor<K,V>接口，插件接口，允许拦截和修改消费者接收到的记录。
+ConsumerRebalanceListener接口，一个回调接口，当消费者被分配的分区发生变化时得到通知
+OffsetCommitCallback接口，一个回调，当一个提交请求完成时得到通知，
+
+
+
+
+
+
+class KafkaConsumer<K,V>
 客户端从kafka集群消费记录。客户端透明地处理kafka代理的失败，透明地处理它取数据的topic分区在集群内的迁移，客户端也和代理交互来允许消费者组负载均衡地消费通过使用消费者组。
 Offsets and Consumer Position
 kafka为一个分区里的每个记录维护一个数字偏移量，这个偏移量在那个分区里充当一个记录的唯一标识符，也表示在那个分区里消费者的位置。例如一个消费者的位置是5的话，表明它已经消费了偏移量0到4的记录，下一个即将接收偏移量是5的记录。实际上位置的两个概念与消费者的用户有关。
@@ -149,15 +212,6 @@ kafka消费者不是线程安全的。所有的网络IO都在应用程序所在�
 优点，这种方法允许独立地扩展消费者的数目和处理器的数目。可能使用一个消费者来满足很多的处理器线程，避免任何来自于分区的限制。
 缺点，在所有处理者中保证顺序，要求特别的小心，因为线程之间是独立执行的，较早的数据可能会在较晚的数据后面被处理，取决于线程幸运的执行时间，对于处理没有顺序要求的，这当然不是问题了。手动提交位置变得比较困难，它要求所有的线程协作来确保那个分区的处理已经完成。
 关于这种方式，有许多可能的变体，例如每个处理器线程可以有自己的队列，消费者线程使用TopicPartition将数据哈希到这些队列，确保顺序消费和简化提交。
-
-
-
-
-
-
-
-
-
 
 
 
