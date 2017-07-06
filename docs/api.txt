@@ -2,9 +2,12 @@ http://kafka.apache.org/0102/javadoc/index.html
 
 package org.apache.kafka.common
 ClusterResourceListener接口，集群监听器，当集群发送改变时会得到通知
-Cluster类，集群，是kafka集群中所有节点，所有topic，所有分区的一个子集表示。根据topic找到它所有可用的分区，获取集群中内部的topic，根据一个topic的一个分区找到该分区中的leader节点，根据节点ID找到一个节点，获得集群中的所有节点，根据分区ID找到分区信息，根据一个topic获取它的分区个数，根据节点ID找到所有leader节点是该节点的分区，根据topic获取它的所有分区，获取集群中的所有topic
+Cluster类，集群，是kafka集群中所有节点，所有topic，所有分区的一个子集表示。根据topic找到它所有可用的分区，获取集群中内部的topic，
+根据一个topic的一个分区找到该分区中的leader节点，根据节点ID找到一个节点，获得集群中的所有节点，根据分区ID找到分区信息，
+根据一个topic获取它的分区个数，根据节点ID找到所有leader节点是该节点的分区，根据topic获取它的所有分区，获取集群中的所有topic
 Node类，表示kafka的一个节点，包括主机名，端口号，节点ID，机架
-PartitionInfo类，表示一个分区，包括该分区中的所有节点，该分区中的leader节点，当前leader节点失败后可能成为新的leader节点的那些节点，该分区的ID，该分区所关联的topic
+PartitionInfo类，表示一个分区，包括该分区中的所有节点，该分区中的leader节点，当前leader节点失败后可能成为新的leader节点的那些节点，
+该分区的ID，该分区所关联的topic
 TopicPartition类，表示一个topic和分区的映射，包括一个topic名称和一个分区ID
 
 package org.apache.kafka.common.serialization
@@ -16,11 +19,16 @@ package org.apache.kafka.clients.producer
 Callback接口，一个回调接口，当请求完成时被执行，成功时获得结果，失败时或的异常
 Partitioner接口，分割器接口，根据key、value计算出该记录在集群中对应的分区ID
 Producer<K,V>接口，生产者接口，
-ProducerInterceptor<K,V>接口，一个插件接口，可以拦截和修改记录在它们被发送到kafka集群前。包含两个方法，一是onSend方法，在key和value被序列化之前，分区被分配之前调用。一是onAcknowledgement方法，当记录被发送到服务器且得到确认时调用，或者发送记录失败时调用，成功时得到结果，失败时得到异常
-ProducerRecord<K,V>类，表示一个要发送到kafka的记录，包括topic，分区ID，时间戳，key，value。其中只有topic和value是必须的，其它的都可以不指定。当指定分区ID后，可以把一系列相关记录按顺序发送到同一个分区，为按顺序消费记录做好准备。当指定了key时，则用key的哈希值来选择分区。既没有指定分区ID，也没有指定key，则以轮询的方式选择分区
+ProducerInterceptor<K,V>接口，一个插件接口，可以拦截和修改记录在它们被发送到kafka集群前。包含两个方法，一是onSend方法，
+在key和value被序列化之前，分区被分配之前调用。一是onAcknowledgement方法，当记录被发送到服务器且得到确认时调用，
+或者发送记录失败时调用，成功时得到结果，失败时得到异常
+ProducerRecord<K,V>类，表示一个要发送到kafka的记录，包括topic，分区ID，时间戳，key，value。其中只有topic和value是必须的，
+其它的都可以不指定。当指定分区ID后，可以把一系列相关记录按顺序发送到同一个分区，为按顺序消费记录做好准备。当指定了key时，
+则用key的哈希值来选择分区。既没有指定分区ID，也没有指定key，则以轮询的方式选择分区
 RecordMetadata类，服务器端已经确认过的记录元数据，包括记录发送到的分区，在分区中的偏移量，序列化后的key的大小，序列化后的value的大小，所属topic，时间戳
 class KafkaProducer<K,V>
-包括flush()方法，立即把缓冲区中的记录发送到服务器，并且阻塞等待直到完成，根据topic获取所有分区，异步发送一个记录，返回一个Future用于获取异步结果，带回调的异步发送一个记录，当发送被确认时调用回调接口
+包括flush()方法，立即把缓冲区中的记录发送到服务器，并且阻塞等待直到完成，根据topic获取所有分区，异步发送一个记录，返回一个Future用于获取异步结果，
+带回调的异步发送一个记录，当发送被确认时调用回调接口
 kafka客户端，用来发布记录到kafka集群。生产者是线程安全的，在多个线程共享单个生产者实例一般要比使用多个实例快。下面是一个简单的示例
  Properties props = new Properties();
  props.put("bootstrap.servers", "localhost:9092");
@@ -37,7 +45,8 @@ kafka客户端，用来发布记录到kafka集群。生产者是线程安全的�
      producer.send(new ProducerRecord<String, String>("my-topic", Integer.toString(i), Integer.toString(i)));
 
  producer.close();
-生产者由一池缓存空间组成，里面存储了还没有发送到服务器的记录，和一个后台IO线程负责把这些记录封装进请求并把它们传输到集群。如果没有成功关闭生产者的话会导致这些资源泄露。
+生产者由一池缓存空间组成，里面存储了还没有发送到服务器的记录，和一个后台IO线程负责把这些记录封装进请求并把它们传输到集群。
+如果没有成功关闭生产者的话会导致这些资源泄露。
 
 send()方法是异步的。当调用它的时候把记录加到一个即将发送记录缓存里，并立即返回。这允许生产者把单个的记录放到一起进行批处理来提高效率。
 
@@ -52,23 +61,30 @@ acks配置控制着标准，在这个标准下请求被认为已完成。当我�
 例如在上面的示例中，可能所有100个记录在一次请求中发送完，因为我们设置了徘徊时间是1毫秒。
 
 然而这个设置将增加1毫秒的请求发送延迟来等待更多的记录到来，如果缓冲区还没有被填满的话。注意，在时间上紧挨着的或一起到来的记录将一般放到一个批处理里面，
-即使把徘徊时间设置为0，因此在非常重的负载情况下，批处理将发生而不管徘徊时间的配置是0。然而把它设置为某个大于0的数将导致更少、更有效的请求，当负载不是最大且可以容忍一小点延迟时。
+即使把徘徊时间设置为0，因此在非常重的负载情况下，批处理将发生而不管徘徊时间的配置是0。然而把它设置为某个大于0的数将导致更少、更有效的请求，
+当负载不是最大且可以容忍一小点延迟时。
 buffer.memory参数控制着生产者可用的总内存数量来用作缓冲区。如果记录发送的速度快于它们被传输到服务器的速度，此时缓冲区空间将被用完。当缓冲区空间用完后，
 后续额外的发送调用将被阻塞，被阻塞的时间长度阈值可以使用max.block.ms来设置，超过这个时间后将超时，并抛出TimeoutException异常
 key.serializer和value.serializer来指定序列化器把对象转换为字节数组
 
 package org.apache.kafka.clients.consumer
 Consumer<K,V>接口，消费者接口
-ConsumerInterceptor<K,V>接口，插件接口，允许拦截和修改消费者接收到的记录。主要用法是第三方组件挂钩到消费者应用中实现自定义监控或日志记录等。多个拦截器共享消费者的配置，拦截器里抛出的异常会被捕获和记录日子，并不会进一步传播，该回调接口将从消费者的IO线程里调用。onConsume方法在刚刚获得到记录还没有消费时调用，onCommit方法在记录已经消费且偏移量已提交时调用
+ConsumerInterceptor<K,V>接口，插件接口，允许拦截和修改消费者接收到的记录。主要用法是第三方组件挂钩到消费者应用中实现自定义监控或日志记录等。
+多个拦截器共享消费者的配置，拦截器里抛出的异常会被捕获和记录日子，并不会进一步传播，该回调接口将从消费者的IO线程里调用。
+onConsume方法在刚刚获得到记录还没有消费时调用，onCommit方法在记录已经消费且偏移量已提交时调用
 ConsumerRebalanceListener接口，一个回调接口，当消费者被分配的分区发生变化时得到通知（内容很多，后续有时间再看。。。）
 OffsetCommitCallback接口，一个回调，当一个偏移量提交请求完成时得到通知，该回调接口在消费者的IO线程中调用。onComplete方法在成功时得到结果，失败时得到异常
 OffsetAndMetadata类，偏移量和元数据，包括一个偏移量和一个字符串类型的元数据
 OffsetAndTimestamp类，偏移量和时间戳，包括一个偏移量和一个时间戳
 RangeAssignor类和RoundRobinAssignor类，都是实现如何把topic的分区分配给topic的消费者的算法（内容很多，后续有时间再看。。。）
 ConsumerRecord<K,V>类，表示从集群中获取的一个记录，包括topic，分区ID，偏移量，时间戳，key值，value值，key序列化后的大小，value序列化后的大小
-ConsumerRecords<K,V>类，一个容器，包含从每个topic的每个分区获取的记录列表。根据一个topic获取所有的记录列表，根据一个topic的一个分区获取所有的记录列表，获取所有topic分区
-class KafkaConsumer<K,V>类，消费者，包括订阅topic，解除订阅topic，手动分配分区，从集群获取记录，暂停获取记录，恢复获取记录，获取某个分区的偏移量，消费完后同步或异步提交偏移量，修改某个分区的偏移量，获取一个topic的所有分区，获取所有topic和分区，按时间戳获取分区偏移量，获得分区最开始的偏移量，获得分区最后的偏移量，当修改偏移量时可以在这个范围内修改
-客户端从kafka集群消费记录。客户端透明地处理kafka代理的失败，透明地处理它取数据的topic分区在集群内的迁移，客户端也和代理交互来允许消费者组负载均衡地消费通过使用消费者组。
+ConsumerRecords<K,V>类，一个容器，包含从每个topic的每个分区获取的记录列表。根据一个topic获取所有的记录列表，
+根据一个topic的一个分区获取所有的记录列表，获取所有topic分区
+class KafkaConsumer<K,V>类，消费者，包括订阅topic，解除订阅topic，手动分配分区，从集群获取记录，暂停获取记录，恢复获取记录，获取某个分区的偏移量，
+消费完后同步或异步提交偏移量，修改某个分区的偏移量，获取一个topic的所有分区，获取所有topic和分区，按时间戳获取分区偏移量，获得分区最开始的偏移量，
+获得分区最后的偏移量，当修改偏移量时可以在这个范围内修改
+客户端从kafka集群消费记录。客户端透明地处理kafka代理的失败，透明地处理它取数据的topic分区在集群内的迁移，客户端也和代理交互来允许消费者组负载均
+衡地消费通过使用消费者组。
 
 Offsets and Consumer Position
 kafka为一个分区里的每个记录维护一个数字偏移量，这个偏移量在那个分区里充当一个记录的唯一标识符，也表示在那个分区里消费者的位置。例如一个消费者的位置是5的话，
@@ -84,10 +100,12 @@ kafka使用消费者组的概念允许一池进程来分割消费和处理记录
 共享同一个组ID的所有消费者实例都是这个消费者组的一部分。
 
 组内的每个消费者能够动态地设置它想订阅的topic列表通过任意一个subscribe API。在每个消费者组里面，kafka将分发已订阅topic里的每条消息给组内的一个消费者实例。
-这通过在组内所有成员间平分所有分区来实现，以至于每个分区分配给组内的一个确定的消费者实例。如果一个topic有四个分区，一个消费者组有两个消费者实例，每个消费者实例将从两个分区消费。
+这通过在组内所有成员间平分所有分区来实现，以至于每个分区分配给组内的一个确定的消费者实例。如果一个topic有四个分区，一个消费者组有两个消费者实例，
+每个消费者实例将从两个分区消费。
 
 一个消费者组内的成员关系是动态维护的，如果一个消费者实例失败，分配给它的分区将重新分配给组内的其它消费者实例。相似的，如果一个新的消费者实例加入到组里，
-分区将从现有的消费者实例上移动到这个新的消费者实例上。这被称为重平衡组。组的重平衡也用于当新的分区被加入到已订阅topic或当一个新的topic且匹配一个已订阅正则表达式被创建。
+分区将从现有的消费者实例上移动到这个新的消费者实例上。这被称为重平衡组。组的重平衡也用于当新的分区被加入到已订阅topic或当一个新的topic且匹配一个已订阅
+正则表达式被创建。
 组将自动地检测新分区通过周期性的元数据刷新，并把这些新分区分配给组内成员。
 
 从概念上讲你可以认为一个消费者组作为一个单个的逻辑订阅者恰巧由多个消费者实例组成。作为一个多订阅者系统，
@@ -102,7 +120,8 @@ kafka天然支持任意数量的消费者组用于一个给定的topic且没有�
 
 Detecting Consumer Failures
 在订阅了若干topic后，当在消费者上调用poll(long)时该消费者将自动加入到组，poll API被设计用来确保消费者存活，只要你继续调用poll，这个消费者将停留在组内，
-继续从分配给它的分区接收消息。在底下，消费者周期性地发送心跳给服务器，如果消费者崩溃或持续一段session.timeout.ms指定的时间不能发送心跳，消费者将被认为死亡，它的分区将会被重分配。
+继续从分配给它的分区接收消息。在底下，消费者周期性地发送心跳给服务器，如果消费者崩溃或持续一段session.timeout.ms指定的时间不能发送心跳，消费者将被认为
+死亡，它的分区将会被重分配。
 
 消费者也有可能遇到一个活锁的情况，在它持续发送心跳的地方，但是没有取得任何进展。为了阻止消费者在这种情况下不确定地抓住它的分区，
 我们提供了一个存活检测机制使用max.poll.interval.ms设置。如果你没有至少以配置的最大间隔频率调用poll，客户端将主动地离开组，以至于另外的消费者可以接管它的分区。
@@ -110,7 +129,8 @@ Detecting Consumer Failures
 因此为了留在组内，你必须持续地调用poll。
 
 消费者提供两个配置来控制poll循环的行为，max.poll.interval.ms，通过增加poll之间的间隔，能够给消费者更多的时间来处理一批从poll(long)方法返回的记录。
-不好之处是延迟了一个组的重平衡，因为消费者只有在对poll调用的内部才能加入重平衡。可以用这个配置来限制重平衡完成的时间，但是你的风险进展缓慢，如果消费者实际不能足够经常地调用poll。
+不好之处是延迟了一个组的重平衡，因为消费者只有在对poll调用的内部才能加入重平衡。可以用这个配置来限制重平衡完成的时间，但是你的风险进展缓慢，如果消费
+者实际不能足够经常地调用poll。
 
 max.poll.records，使用这个设置来限制对poll的单次调用返回的总的记录数。这使得更容预测在每个poll间隔内必须处理的最大记录数。通过调整这个值，你能够减小poll间隔，
 将减小组重平衡的冲击或影响。
@@ -122,20 +142,21 @@ max.poll.records，使用这个设置来限制对poll的单次调用返回的总
 Usage Examples
 Automatic Offset Committing
 	Properties props = new Properties();
-     props.put("bootstrap.servers", "localhost:9092");
-     props.put("group.id", "test");
-     props.put("enable.auto.commit", "true");
-     props.put("auto.commit.interval.ms", "1000");
-     props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
-     props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
-     KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props);
-     consumer.subscribe(Arrays.asList("foo", "bar"));
-     while (true) {
-         ConsumerRecords<String, String> records = consumer.poll(100);
-         for (ConsumerRecord<String, String> record : records)
-             System.out.printf("offset = %d, key = %s, value = %s%n", record.offset(), record.key(), record.value());
-     }
-使用bootstrap.servers指定一到多个broker列表，它仅仅用于发现集群中剩余其它的broker，不需要把集群中所有的服务器都列出来（有时你需要指定多个，当客户端正在连接的那个服务器宕机时）。
+    props.put("bootstrap.servers", "localhost:9092");
+    props.put("group.id", "test");
+    props.put("enable.auto.commit", "true");
+    props.put("auto.commit.interval.ms", "1000");
+    props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+    props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+    KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props);
+    consumer.subscribe(Arrays.asList("foo", "bar"));
+    while (true) {
+        ConsumerRecords<String, String> records = consumer.poll(100);
+        for (ConsumerRecord<String, String> record : records)
+            System.out.printf("offset = %d, key = %s, value = %s%n", record.offset(), record.key(), record.value());
+    }
+使用bootstrap.servers指定一到多个broker列表，它仅仅用于发现集群中剩余其它的broker，不需要把集群中所有的服务器都列出来（有时你需要指定多个，
+当客户端正在连接的那个服务器宕机时）。
 
 设置enable.auto.commit意味着偏移量以一个可控的频率自动提交，这个频率由auto.commit.interval.ms来配置。
 
@@ -171,7 +192,8 @@ Manual Offset Control
 或者在关闭消费者前必须消费完所有的数据。如果以上两者之一出现了失败，有可能已提交的偏移量跑到消费位置的前面，这将导致丢失记录。因为在自动提交偏移量时，
 只要记录被成功获取到，就可以周期性地自动提交偏移量了，不管你是否已经消费了记录。使用手动偏移量控制的好处是你拥有直接的控制权当一个记录被认为已经消费时。
 
-上面的示例使用commitSync()来标记所有接收到的记录当提交时。有时你希望对记录有更加细粒度的控制通过显式指定一个偏移量。下面的示例在处理完每个分区中的记录时提交该分区的偏移量。
+上面的示例使用commitSync()来标记所有接收到的记录当提交时。有时你希望对记录有更加细粒度的控制通过显式指定一个偏移量。下面的示例在处理完每个分区中的记录
+时提交该分区的偏移量。
      try {
          while(running) {
              ConsumerRecords<String, String> records = consumer.poll(Long.MAX_VALUE);
@@ -210,8 +232,8 @@ Storing Offsets Outside Kafka
 
 如果消费结果正被存储在一个关系数据库，把偏移量也存储到数据库，能够允许消费结果和偏移量在一个事务里提交。要么消费成功同时更新偏移量或者消费失败不更新偏移量。
 
-如果消费结果正被存储到一个本地存储，也可以把偏移量存到那里。例如通过订阅一个特殊的分区能够创建一个搜索索引，偏移量和索引数据可以存储在一起。如果这是以原子方式完成的，
-通常这是可能的使它成为这种情况即使崩溃发生造成未同步的数据丢失，无论留下什么东西，相应的偏移量也会存储。。。
+如果消费结果正被存储到一个本地存储，也可以把偏移量存到那里。例如通过订阅一个特殊的分区能够创建一个搜索索引，偏移量和索引数据可以存储在一起。如果这是以原子方
+式完成的，通常这是可能的使它成为这种情况即使崩溃发生造成未同步的数据丢失，无论留下什么东西，相应的偏移量也会存储。。。
 
 每个记录都有它自己的偏移量，因此要管理你自己的偏移量仅仅需要做下面这些。
 配置enable.auto.commit=false，使用随ConsumerRecord提供的偏移量来存储你的位置，在重新启动时使用seek(TopicPartition, long)方法来重新存储消费者的位置。
@@ -219,7 +241,8 @@ Storing Offsets Outside Kafka
 这种用法类型最简单，当分区分配是手动完成时。如果分区分配是自动完成的，需要特别关注处理分区分配发送改变的情形。
 可以通过提供一个ConsumerRebalanceListener实例在对subscribe(Collection, ConsumerRebalanceListener)和subscribe(Pattern, ConsumerRebalanceListener)调用时。
 例如，当分区从一个消费者被带走时，消费者将希望为这些分区提交它的偏移量，通过实现ConsumerRebalanceListener.onPartitionsRevoked(Collection)来做到。
-当分区被分配给一个消费者时，消费者将希望为这些新分区查询偏移量，正确地初始化消费者到那个位置，通过实现ConsumerRebalanceListener.onPartitionsAssigned(Collection)来做到。
+当分区被分配给一个消费者时，消费者将希望为这些新分区查询偏移量，正确地初始化消费者到那个位置，
+通过实现ConsumerRebalanceListener.onPartitionsAssigned(Collection)来做到。
 ConsumerRebalanceListener的另一个普通使用是来刷新应用程序为分区维护的任何缓存，移动到其它地方。
 
 Controlling The Consumer's Position
@@ -231,7 +254,8 @@ Controlling The Consumer's Position
 另一个用例是一个系统维护了本地状态。这种情况消费者希望在启动时把它的位置初始化为本地存储里面包含的内容。同样地如果本地状态被破坏，状态可能在一个新的机器上被重建，
 通过重消费所有的数据和重创建状态（假设kafka保留足够的历史）。
 
-kafka允许使用seek(TopicPartition, long)方法指定位置来指定新的位置。特别的方法seekToBeginning(Collection)和seekToEnd(Collection)定位到服务器维护的最早和最近的偏移量也是可用的。
+kafka允许使用seek(TopicPartition, long)方法指定位置来指定新的位置。特别的方法seekToBeginning(Collection)和seekToEnd(Collection)定位到服务器维护的最早和最
+近的偏移量也是可用的。
 
 Consumption Flow Control
 如果一个消费者被分配多个分区来从它们取数据，将尝试同时从它们消费数据，实际上这些分区具有相同的优先权。有时消费者希望首先关注某些分区并全速获取数据，
@@ -276,15 +300,15 @@ kafka消费者不是线程安全的。所有的网络IO都在应用程序所在�
 在另外一个线程里，消费者可以通过设置标志被关闭和唤醒。
      closed.set(true);
      consumer.wakeup();
-注意，虽然可以使用线程的中断而不是wakeup()方法来中断一个阻塞的操作（这是线程抛出一个InterruptException），我们不鼓励这样的用法，因为可能导致将被中断消费者的一个干净的关闭。
-线程中断主要用于支持那些不能使用wakeup()方法的情况，例如kafka客户端不知道管理消费者线程的代码。
+注意，虽然可以使用线程的中断而不是wakeup()方法来中断一个阻塞的操作（这是线程抛出一个InterruptException），我们不鼓励这样的用法，
+因为可能导致将被中断消费者的一个干净的关闭。线程中断主要用于支持那些不能使用wakeup()方法的情况，例如kafka客户端不知道管理消费者线程的代码。
 
 我们故意避免实现一个特殊的线程模型用于处理，这使得实现记录的多线程处理有更多的选择。
 1. One Consumer Per Thread
 一个简单的选项就是给每个线程它自己的消费者实例，这是这种方式的优点和缺点。
 优点，实现最简单，通常是最快的因为线程间不需要协作，它是每个分区的按顺序消费很容易实现（因为每个线程处理消息的顺序就是接收它们的顺序）。
-缺点，越多的消费者意味着越多的到集群的TCP连接（每个消费者一个线程），一般来说kafka处理连接非常高效，所以通常来说是一个很小的开销。多消费者意味着更多的请求被发送到服务器，
-轻微的减少了数据的批处理，可能导致丢掉一些IO吞吐量。所有参与处理的线程数目将受到所有分区数目的限制。
+缺点，越多的消费者意味着越多的到集群的TCP连接（每个消费者一个线程），一般来说kafka处理连接非常高效，所以通常来说是一个很小的开销。
+多消费者意味着更多的请求被发送到服务器，轻微的减少了数据的批处理，可能导致丢掉一些IO吞吐量。所有参与处理的线程数目将受到所有分区数目的限制。
 
 2. Decouple Consumption and Processing
 另一个可选的方法是用一到多个消费者线程来获取所有的数据，把这些ConsumerRecords实例放到一个阻塞队列里，然后用一个处理器线程池来从队列里面消费，实际完成对记录的处理。
